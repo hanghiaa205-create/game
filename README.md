@@ -1,0 +1,82 @@
+[game_dice.html](https://github.com/user-attachments/files/32439812/game_dice.html)
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>웹 미니게임 아케이드</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; }
+        body { background: #0f172a; color: #fff; min-height: 100vh; padding: 40px 20px; display: flex; flex-direction: column; align-items: center; }
+        h1 { font-size: 2.2rem; color: #38bdf8; margin-bottom: 10px; text-align: center; }
+        p.subtitle { color: #94a3b8; margin-bottom: 30px; text-align: center; }
+        .game-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; width: 100%; max-width: 900px; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; text-decoration: none; color: inherit; transition: all 0.2s ease; display: flex; flex-direction: column; justify-content: space-between; }
+        .card:hover { transform: translateY(-5px); border-color: #38bdf8; box-shadow: 0 10px 20px rgba(56, 189, 248, 0.2); }
+        .card .icon { font-size: 2.5rem; margin-bottom: 10px; }
+        .card h2 { font-size: 1.3rem; color: #f8fafc; margin-bottom: 8px; }
+        .card p { font-size: 0.9rem; color: #94a3b8; line-height: 1.4; }
+        .btn-play { margin-top: 15px; padding: 8px 16px; background: #0ea5e9; color: #fff; text-align: center; border-radius: 6px; font-weight: bold; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <h1>🎮 웹 미니게임 아케이드</h1>
+    <p class="subtitle">원하는 게임을 선택하여 플레이하세요!</p>
+
+    <div class="game-grid">
+        <a href="01_2048.html" class="card">
+            <div>
+                <div class="icon">🔢</div>
+                <h2>2048 퍼즐</h2>
+                <p>동일한 숫자를 합쳐 2048 타일을 완성하는 클래식 퍼즐 게임입니다.</p>
+            </div>
+            <div class="btn-play">게임 시작</div>
+        </a>
+
+        <a href="02_rhythm.html" class="card">
+            <div>
+                <div class="icon">🎹</div>
+                <h2>리듬 피아노</h2>
+                <p>A, S, D, F 키로 내려오는 타일에 맞춰 콤보를 이어가는 리듬 게임입니다.</p>
+            </div>
+            <div class="btn-play">게임 시작</div>
+        </a>
+
+        <a href="03_solitaire.html" class="card">
+            <div>
+                <div class="icon">♠️</div>
+                <h2>스파이더 솔리테어</h2>
+                <p>K부터 A까지 순서대로 카드를 정렬하여 모든 카드를 제거하는 게임입니다.</p>
+            </div>
+            <div class="btn-play">게임 시작</div>
+        </a>
+
+        <a href="04_bubble_shooter.html" class="card">
+            <div>
+                <div class="icon">🫧</div>
+                <h2>버블 슈터</h2>
+                <p>같은 색상의 버블을 3개 이상 맞추어 터뜨리는 아케이드 퍼즐입니다.</p>
+            </div>
+            <div class="btn-play">게임 시작</div>
+        </a>
+
+        <a href="05_block_blast.html" class="card">
+            <div>
+                <div class="icon">🧩</div>
+                <h2>블록 블래스트</h2>
+                <p>다양한 블록을 8x8 보드판에 드래그하여 가로/세로 줄을 맞춰 터뜨립니다.</p>
+            </div>
+            <div class="btn-play">게임 시작</div>
+        </a>
+
+        <a href="06_chess.html" class="card">
+            <div>
+                <div class="icon">♟️</div>
+                <h2>체스 (vs AI)</h2>
+                <p>인공지능 대국자와 한 수씩 주고받으며 수싸움을 펼치는 체스 게임입니다.</p>
+            </div>
+            <div class="btn-play">게임 시작</div>
+        </a>
+    </div>
+</body>
+</html>
