@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>버블 슈터 게임</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; user-select: none; }
+        body { background: #0f172a; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+
+        .header { display: flex; justify-content: space-between; align-items: center; width: 360px; margin-bottom: 12px; }
+        .title { font-size: 1.5rem; font-weight: bold; color: #38bdf8; }
+        .score-box { font-size: 1.2rem; font-weight: bold; color: #f1f5f9; }
+
+        .game-container { position: relative; width: 360px; height: 520px; background: #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 2px solid #334155; }
+        canvas { background: #0f172a; display: block; }
+
+        /* 오버레이 */
+        .overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.85); flex-direction: column; align-items: center; justify-content: center; z-index: 10; }
+        .overlay h2 { font-size: 2.2rem; color: #ef4444; margin-bottom: 10px; }
+        .overlay p { font-size: 1.2rem; color: #cbd5e1; margin-bottom: 20px; }
+        
+        .btn-restart { background: #0ea5e9; color: #fff; border: none; padding: 10px 20px; font-size: 1rem; font-weight: bold; border-radius: 20px; cursor: pointer; transition: 0.2s; }
+        .btn-restart:hover { background: #38bdf8; transform: scale(1.05); }
+
+        .info { margin-top: 12px; font-size: 0.85rem; color: #94a3b8; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="title">🫧 버블 슈터</div>
+        <div class="score-box">점수: <span id="score">0</span></div>
+    </div>
+
+    <div class="game-container">
+        <canvas id="gameCanvas" width="360" height="520"></canvas>
+        <div class="overlay" id="overlay">
+            <h2 id="overlayTitle">GAME OVER</h2>
+            <p id="finalScore">최종 점수: 0</p>
+            <button class="btn-restart" onclick="initGame()">다시 시작</button>
+        </div>
+    </div>
+
+    <div class="info">마우스로 조준하고 클릭하여 같은 색상 버블을 3개 이상 맞추세요!</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlayTitle');
+        const finalScore = document.getElementById('finalScore');
+
+        const BUBBLE_RADIUS = 20;
+        const GRID_ROWS = 10;
+        const GRID_COLS = 9;
+        const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#a855f7'];
+
+        let grid = [];
+        let score = 0;
+        let isGameOver = false;
+        let currentBubble = null;
+        let nextBubbleColor = '';
+        let aimAngle = Math.PI / 2;
+        let shotsCount = 0;
+
+        // 버블 클래스
+        class Bubble {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.vx = 0;
+                this.vy = 0;
+                this.isMoving = false;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, BUBBLE_RADIUS - 1, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                
+                // 입체감 광택 효과
+                ctx.beginPath();
+                ctx.arc(this.x - BUBBLE_RADIUS / 3, this.y - BUBBLE_RADIUS / 3, BUBBLE_RADIUS / 4, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.fill();
+            }
+
+            update() {
+                if (!this.isMoving) return;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 좌우 벽면 반사
+                if (this.x - BUBBLE_RADIUS <= 0 || this.x + BUBBLE_RADIUS >= canvas.width) {
+                    this.vx *= -1;
+                    this.x = Math.max(BUBBLE_RADIUS, Math.min(canvas.width - BUBBLE_RADIUS, this.x));
+                }
+
+                // 천장 또는 기존 버블 충돌 체크
+                if (this.y - BUBBLE_RADIUS <= 0 || checkCollision(this)) {
+                    this.isMoving = false;
+                    snapToGrid(this);
+                }
+            }
+        }
+
+        function initGame() {
+            score = 0;
+            shotsCount = 0;
+            isGameOver = false;
+            scoreEl.innerText = score;
+            overlay.style.display = 'none';
+
+            // 그리드 초기화 (상단 4줄 버블 채우기)
+            grid = Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
+            for (let r = 0; r < 4; r++) {
+                for (let c = 0; c < (r % 2 === 1 ? GRID_COLS - 1 : GRID_COLS); c++) {
+                    const pos = getCanvasPos(r, c);
+                    grid[r][c] = new Bubble(pos.x, pos.y, getRandomColor());
+                }
+            }
+
+            nextBubbleColor = getRandomColor();
+            spawnShooterBubble();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function getRandomColor() {
+            return COLORS[Math.floor(Math.random() * COLORS.length)];
+        }
+
+        function getCanvasPos(row, col) {
+            const isOffset = row % 2 === 1;
+            const startX = isOffset ? BUBBLE_RADIUS * 2 : BUBBLE_RADIUS;
+            const x = startX + col * (BUBBLE_RADIUS * 2);
+            const y = BUBBLE_RADIUS + row * (BUBBLE_RADIUS * 1.732);
+            return { x, y };
+        }
+
+        function spawnShooterBubble() {
+            currentBubble = new Bubble(canvas.width / 2, canvas.height - 40, nextBubbleColor);
+            nextBubbleColor = getRandomColor();
+        }
+
+        function checkCollision(bubble) {
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    const target = grid[r][c];
+                    if (target) {
+                        const dist = Math.hypot(bubble.x - target.x, bubble.y - target.y);
+                        if (dist < BUBBLE_RADIUS * 2 - 2) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function snapToGrid(bubble) {
+            let closestDist = Infinity;
+            let targetR = 0, targetC = 0;
+
+            for (let r = 0; r < GRID_ROWS; r++) {
+                const colsInRow = r % 2 === 1 ? GRID_COLS - 1 : GRID_COLS;
+                for (let c = 0; c < colsInRow; c++) {
+                    if (!grid[r][c]) {
+                        const pos = getCanvasPos(r, c);
+                        const dist = Math.hypot(bubble.x - pos.x, bubble.y - pos.y);
+                        if (dist < closestDist) {
+                            closestDist = dist;
+                            targetR = r;
+                            targetC = c;
+                        }
+                    }
+                }
+            }
+
+            const pos = getCanvasPos(targetR, targetC);
+            grid[targetR][targetC] = new Bubble(pos.x, pos.y, bubble.color);
+
+            // 매칭 검사
+            const matches = getConnectedMatches(targetR, targetC, bubble.color);
+            if (matches.length >= 3) {
+                popBubbles(matches);
+                dropFloatingBubbles();
+            }
+
+            shotsCount++;
+            if (shotsCount % 6 === 0) {
+                shiftGridDown();
+            }
+
+            checkGameOverCondition();
+            if (!isGameOver) {
+                spawnShooterBubble();
+            }
+        }
+
+        function getConnectedMatches(startR, startC, color) {
+            const visited = new Set();
+            const matches = [];
+
+            function dfs(r, c) {
+                const key = `${r},${c}`;
+                if (visited.has(key)) return;
+                visited.add(key);
+
+                if (r < 0 || r >= GRID_ROWS || !grid[r][c] || grid[r][c].color !== color) return;
+
+                matches.push({ r, c });
+
+                getNeighbors(r, c).forEach(n => dfs(n.r, n.c));
+            }
+
+            dfs(startR, startC);
+            return matches;
+        }
+
+        function getNeighbors(r, c) {
+            const isOffset = r % 2 === 1;
+            const directions = isOffset ? [
+                { r: r, c: c - 1 }, { r: r, c: c + 1 },
+                { r: r - 1, c: c }, { r: r - 1, c: c + 1 },
+                { r: r + 1, c: c }, { r: r + 1, c: c + 1 }
+            ] : [
+                { r: r, c: c - 1 }, { r: r, c: c + 1 },
+                { r: r - 1, c: c - 1 }, { r: r - 1, c: c },
+                { r: r + 1, c: c - 1 }, { r: r + 1, c: c }
+            ];
+
+            return directions.filter(d => d.r >= 0 && d.r < GRID_ROWS && d.c >= 0 && d.c < (d.r % 2 === 1 ? GRID_COLS - 1 : GRID_COLS));
+        }
+
+        function popBubbles(matches) {
+            matches.forEach(m => {
+                grid[m.r][m.c] = null;
+            });
+            score += matches.length * 10;
+            scoreEl.innerText = score;
+        }
+
+        function dropFloatingBubbles() {
+            const connectedToTop = new Set();
+
+            function dfs(r, c) {
+                const key = `${r},${c}`;
+                if (connectedToTop.has(key) || !grid[r][c]) return;
+                connectedToTop.add(key);
+
+                getNeighbors(r, c).forEach(n => dfs(n.r, n.c));
+            }
+
+            // 첫째 줄 버블에서 시작하는 모든 연결 탐색
+            for (let c = 0; c < GRID_COLS; c++) {
+                if (grid[0][c]) dfs(0, c);
+            }
+
+            // 연결되지 않은 공중 버블 제거
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    if (grid[r][c] && !connectedToTop.has(`${r},${c}`)) {
+                        grid[r][c] = null;
+                        score += 20;
+                    }
+                }
+            }
+            scoreEl.innerText = score;
+        }
+
+        function shiftGridDown() {
+            for (let r = GRID_ROWS - 1; r > 0; r--) {
+                grid[r] = [...grid[r - 1]];
+            }
+            grid[0] = Array.from({ length: GRID_COLS }, () => new Bubble(0, 0, getRandomColor()));
+
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    if (grid[r][c]) {
+                        const pos = getCanvasPos(r, c);
+                        grid[r][c].x = pos.x;
+                        grid[r][c].y = pos.y;
+                    }
+                }
+            }
+        }
+
+        function checkGameOverCondition() {
+            for (let c = 0; c < GRID_COLS; c++) {
+                if (grid[GRID_ROWS - 1][c]) {
+                    isGameOver = true;
+                    overlayTitle.innerText = "GAME OVER";
+                    finalScore.innerText = `최종 점수: ${score}`;
+                    overlay.style.display = 'flex';
+                    return;
+                }
+            }
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 데드라인 선
+            ctx.strokeStyle = '#ef4444';
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height - 80);
+            ctx.lineTo(canvas.width, canvas.height - 80);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 그리드 버블 그리기
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    if (grid[r][c]) grid[r][c].draw();
+                }
+            }
+
+            // 발사 조준선 그리기
+            if (currentBubble && !currentBubble.isMoving) {
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(currentBubble.x, currentBubble.y);
+                ctx.lineTo(currentBubble.x + Math.cos(aimAngle) * 80, currentBubble.y - Math.sin(aimAngle) * 80);
+                ctx.stroke();
+            }
+
+            // 현재 버블 업데이트 및 그리기
+            if (currentBubble) {
+                currentBubble.update();
+                currentBubble.draw();
+            }
+
+            // 다음 대기 버블 예시
+            ctx.beginPath();
+            ctx.arc(35, canvas.height - 35, BUBBLE_RADIUS - 4, 0, Math.PI * 2);
+            ctx.fillStyle = nextBubbleColor;
+            ctx.fill();
+
+            if (!isGameOver) requestAnimationFrame(gameLoop);
+        }
+
+        // 마우스 조준 및 발사
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const dx = mouseX - canvas.width / 2;
+            const dy = (canvas.height - 40) - mouseY;
+            if (dy > 10) aimAngle = Math.atan2(dy, dx);
+        });
+
+        canvas.addEventListener('click', () => {
+            if (currentBubble && !currentBubble.isMoving && !isGameOver) {
+                const speed = 12;
+                currentBubble.vx = Math.cos(aimAngle) * speed;
+                currentBubble.vy = -Math.sin(aimAngle) * speed;
+                currentBubble.isMoving = true;
+            }
+        });
+
+        initGame();
+    </script>
+</body>
+</html>

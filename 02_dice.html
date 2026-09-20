@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>리듬 피아노 게임</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; }
+        body { background: #18181c; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
+        
+        .game-container { position: relative; width: 360px; height: 600px; background: #222; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+        
+        /* 라인 구분선 */
+        .lanes { display: flex; width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        .lane { flex: 1; border-right: 1px solid rgba(255,255,255,0.1); position: relative; }
+        .lane:last-child { border-right: none; }
+        
+        /* 판정선 */
+        .judge-line { position: absolute; bottom: 80px; width: 100%; height: 8px; background: #ff4757; box-shadow: 0 0 10px #ff4757; z-index: 2; }
+        
+        /* 키 가이드 버튼 */
+        .key-hints { position: absolute; bottom: 0; width: 100%; height: 80px; display: flex; background: #111; z-index: 3; }
+        .key-hint { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; color: #888; border-right: 1px solid #222; cursor: pointer; user-select: none; }
+        .key-hint:active, .key-hint.active { background: #333; color: #4facfe; }
+
+        /* 타일 스타일 */
+        .tile { position: absolute; width: 100%; height: 100px; background: linear-gradient(180deg, #00f2fe, #4facfe); border-radius: 6px; box-shadow: 0 4px 10px rgba(79,172,254,0.5); }
+
+        /* 점수판 */
+        .scoreboard { position: absolute; top: 20px; left: 0; width: 100%; text-align: center; z-index: 10; pointer-events: none; }
+        .score { font-size: 2.5rem; font-weight: 900; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        .combo { font-size: 1.2rem; color: #00f2fe; font-weight: bold; margin-top: 4px; }
+
+        /* 게임 오버 화면 */
+        .game-over { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 20; flex-direction: column; align-items: center; justify-content: center; }
+        .game-over h2 { font-size: 2.5rem; color: #ff4757; margin-bottom: 10px; }
+        .game-over p { font-size: 1.2rem; margin-bottom: 20px; color: #ccc; }
+        .restart-btn { padding: 12px 24px; font-size: 1rem; font-weight: bold; background: #4facfe; color: #fff; border: none; border-radius: 25px; cursor: pointer; transition: 0.2s; }
+        .restart-btn:hover { background: #00f2fe; transform: scale(1.05); }
+    </style>
+</head>
+<body>
+
+    <div class="game-container">
+        <div class="scoreboard">
+            <div class="score" id="score">0</div>
+            <div class="combo" id="combo">0 COMBO</div>
+        </div>
+
+        <div class="lanes" id="lanes">
+            <div class="lane" id="lane-0"></div>
+            <div class="lane" id="lane-1"></div>
+            <div class="lane" id="lane-2"></div>
+            <div class="lane" id="lane-3"></div>
+        </div>
+
+        <div class="judge-line"></div>
+
+        <div class="key-hints">
+            <div class="key-hint" id="hint-0" onmousedown="triggerKey(0)" onmouseup="releaseKey(0)">A</div>
+            <div class="key-hint" id="hint-1" onmousedown="triggerKey(1)" onmouseup="releaseKey(1)">S</div>
+            <div class="key-hint" id="hint-2" onmousedown="triggerKey(2)" onmouseup="releaseKey(2)">D</div>
+            <div class="key-hint" id="hint-3" onmousedown="triggerKey(3)" onmouseup="releaseKey(3)">F</div>
+        </div>
+
+        <div class="game-over" id="gameOverScreen">
+            <h2>GAME OVER</h2>
+            <p id="finalScore">최종 점수: 0</p>
+            <button class="restart-btn" onclick="startGame()">다시 시작</button>
+        </div>
+    </div>
+
+    <script>
+        const keyMap = { 'a': 0, 's': 1, 'd': 2, 'f': 3, 'A': 0, 'S': 1, 'D': 2, 'F': 3 };
+        const laneElements = [
+            document.getElementById('lane-0'),
+            document.getElementById('lane-1'),
+            document.getElementById('lane-2'),
+            document.getElementById('lane-3')
+        ];
+        const hintElements = [
+            document.getElementById('hint-0'),
+            document.getElementById('hint-1'),
+            document.getElementById('hint-2'),
+            document.getElementById('hint-3')
+        ];
+
+        let score = 0;
+        let combo = 0;
+        let activeTiles = [];
+        let gameInterval = null;
+        let spawnInterval = null;
+        let isGameOver = false;
+        let speed = 4;
+
+        function startGame() {
+            // 초기화
+            score = 0;
+            combo = 0;
+            speed = 4;
+            isGameOver = false;
+            activeTiles.forEach(t => t.element.remove());
+            activeTiles = [];
+
+            document.getElementById('score').innerText = score;
+            document.getElementById('combo').innerText = '0 COMBO';
+            document.getElementById('gameOverScreen').style.display = 'none';
+
+            clearInterval(gameInterval);
+            clearInterval(spawnInterval);
+
+            // 게임 루프 (60FPS)
+            gameInterval = setInterval(updateGame, 1000 / 60);
+
+            // 타일 생성 (0.6초마다)
+            spawnInterval = setInterval(spawnTile, 600);
+        }
+
+        function spawnTile() {
+            if (isGameOver) return;
+            const laneIndex = Math.floor(Math.random() * 4);
+            const tileEl = document.createElement('div');
+            tileEl.className = 'tile';
+            tileEl.style.top = '-100px';
+
+            laneElements[laneIndex].appendChild(tileEl);
+
+            activeTiles.push({
+                lane: laneIndex,
+                y: -100,
+                element: tileEl
+            });
+        }
+
+        function updateGame() {
+            for (let i = activeTiles.length - 1; i >= 0; i--) {
+                const tile = activeTiles[i];
+                tile.y += speed;
+                tile.element.style.top = tile.y + 'px';
+
+                // 놓친 타일 (판정선 완전히 지나침: 520px)
+                if (tile.y > 520) {
+                    endGame();
+                    return;
+                }
+            }
+
+            // 난이도 상승 (점수에 따라 속도 증가)
+            speed = 4 + Math.floor(score / 100) * 0.5;
+        }
+
+        function checkHit(laneIndex) {
+            if (isGameOver) return;
+
+            // 해당 라인에서 가장 아래 있는 타일 찾기
+            const tileIndex = activeTiles.findIndex(t => t.lane === laneIndex && t.y >= 320 && t.y <= 500);
+
+            if (tileIndex !== -1) {
+                // 적중
+                const tile = activeTiles[tileIndex];
+                tile.element.remove();
+                activeTiles.splice(tileIndex, 1);
+
+                score += 10 + combo;
+                combo++;
+                document.getElementById('score').innerText = score;
+                document.getElementById('combo').innerText = `${combo} COMBO`;
+            } else {
+                // 잘못 누름 (콤보 리셋)
+                combo = 0;
+                document.getElementById('combo').innerText = '0 COMBO';
+            }
+        }
+
+        function endGame() {
+            isGameOver = true;
+            clearInterval(gameInterval);
+            clearInterval(spawnInterval);
+            document.getElementById('finalScore').innerText = `최종 점수: ${score}`;
+            document.getElementById('gameOverScreen').style.display = 'flex';
+        }
+
+        function triggerKey(laneIndex) {
+            hintElements[laneIndex].classList.add('active');
+            checkHit(laneIndex);
+        }
+
+        function releaseKey(laneIndex) {
+            hintElements[laneIndex].classList.remove('active');
+        }
+
+        // 키보드 이벤트
+        window.addEventListener('keydown', (e) => {
+            if (keyMap[e.key] !== undefined && !e.repeat) {
+                triggerKey(keyMap[e.key]);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (keyMap[e.key] !== undefined) {
+                releaseKey(keyMap[e.key]);
+            }
+        });
+
+        // 게임 시작
+        startGame();
+    </script>
+</body>
+</html>

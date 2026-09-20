@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스파이더 카드 솔리테어</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; user-select: none; }
+        body { background: #0b6623; color: #fff; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
+
+        .header { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 800px; margin-bottom: 20px; }
+        .title { font-size: 1.8rem; font-weight: bold; }
+        .status { display: flex; gap: 20px; font-size: 1.1rem; }
+        .btn { background: #2e8b57; color: #fff; border: 1px solid #3cb371; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn:hover { background: #3cb371; }
+
+        /* 게임 필드 */
+        .board { display: flex; gap: 10px; justify-content: center; width: 100%; max-width: 850px; height: 500px; }
+        .column { flex: 1; position: relative; background: rgba(0,0,0,0.15); border-radius: 6px; border: 1px dashed rgba(255,255,255,0.2); height: 100%; }
+
+        /* 카드 스타일 */
+        .card { position: absolute; width: 100%; height: 90px; background: #fff; border: 1px solid #ccc; border-radius: 6px; display: flex; flex-direction: column; justify-content: space-between; padding: 5px; color: #000; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: transform 0.1s, box-shadow 0.1s; }
+        .card.back { background: linear-gradient(135deg, #1e3c72, #2a5298); border: 2px solid #fff; color: transparent; }
+        .card.selected { transform: translateY(-10px); box-shadow: 0 5px 15px rgba(255,255,0,0.8); border: 2px solid #ffd700; }
+        .card.red { color: #d63031; }
+
+        /* 하단 컨트롤 (예비 덱 & 완성 영역) */
+        .bottom-bar { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 800px; margin-top: 20px; }
+        .stock-deck { width: 70px; height: 90px; background: linear-gradient(135deg, #1e3c72, #2a5298); border: 2px solid #fff; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+        .completed-sets { display: flex; gap: 5px; }
+        .completed-slot { width: 50px; height: 70px; border: 1px dashed rgba(255,255,255,0.4); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; color: #ccc; }
+
+        /* 승리 메시지 */
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; flex-direction: column; align-items: center; justify-content: center; }
+        .overlay h1 { font-size: 3rem; color: #ffd700; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="title">♠️ 스파이더 솔리테어</div>
+        <div class="status">
+            <div>점수: <span id="score">500</span></div>
+            <div>이동: <span id="moves">0</span></div>
+        </div>
+        <button class="btn" onclick="initGame()">새 게임</button>
+    </div>
+
+    <div class="board" id="board">
+        <!-- 10개의 카드가 들어갈 열 -->
+        <div class="column" onclick="handleColumnClick(0)"></div>
+        <div class="column" onclick="handleColumnClick(1)"></div>
+        <div class="column" onclick="handleColumnClick(2)"></div>
+        <div class="column" onclick="handleColumnClick(3)"></div>
+        <div class="column" onclick="handleColumnClick(4)"></div>
+        <div class="column" onclick="handleColumnClick(5)"></div>
+        <div class="column" onclick="handleColumnClick(6)"></div>
+        <div class="column" onclick="handleColumnClick(7)"></div>
+        <div class="column" onclick="handleColumnClick(8)"></div>
+        <div class="column" onclick="handleColumnClick(9)"></div>
+    </div>
+
+    <div class="bottom-bar">
+        <div class="completed-sets" id="completedSets"></div>
+        <div class="stock-deck" id="stockDeck" onclick="drawStockCards()">카드 배포</div>
+    </div>
+
+    <div class="overlay" id="winOverlay">
+        <h1>축하합니다! 승리하셨습니다! 🎉</h1>
+        <button class="btn" onclick="initGame()">다시 하기</button>
+    </div>
+
+    <script>
+        const suits = ['♠']; // 1-Suit (초급 모드)
+        const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+        const valNames = { 1:'A', 11:'J', 12:'Q', 13:'K' };
+
+        let deck = [];
+        let columns = [[],[],[],[],[],[],[],[],[],[]];
+        let stock = [];
+        let completedCount = 0;
+        let selected = null; // { colIndex, cardIndex }
+        let score = 500;
+        let moves = 0;
+
+        function createDeck() {
+            deck = [];
+            // 총 8세트 (104장)
+            for (let i = 0; i < 8; i++) {
+                values.forEach(v => {
+                    deck.push({ suit: '♠', value: v, faceUp: false });
+                });
+            }
+            deck.sort(() => Math.random() - 0.5);
+        }
+
+        function initGame() {
+            createDeck();
+            columns = [[],[],[],[],[],[],[],[],[],[]];
+            stock = [];
+            completedCount = 0;
+            selected = null;
+            score = 500;
+            moves = 0;
+            document.getElementById('winOverlay').style.display = 'none';
+
+            // 54장을 10개 열에 배포 (처음 4열은 6장, 나머지 4장은 5장)
+            for (let i = 0; i < 54; i++) {
+                const colIdx = i % 10;
+                columns[colIdx].push(deck.pop());
+            }
+
+            // 각 열의 가장 위 카드 오픈
+            columns.forEach(col => {
+                if (col.length > 0) col[col.length - 1].faceUp = true;
+            });
+
+            // 남은 50장은 예비 덱으로
+            stock = deck;
+
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('score').innerText = score;
+            document.getElementById('moves').innerText = moves;
+
+            // 보드 채우기
+            const boardColEls = document.querySelectorAll('.column');
+            boardColEls.forEach((colEl, cIdx) => {
+                colEl.innerHTML = '';
+                columns[cIdx].forEach((card, rIdx) => {
+                    const cardEl = document.createElement('div');
+                    cardEl.className = `card ${card.faceUp ? '' : 'back'}`;
+                    
+                    if (selected && selected.colIndex === cIdx && rIdx >= selected.cardIndex) {
+                        cardEl.classList.add('selected');
+                    }
+
+                    if (card.faceUp) {
+                        const valStr = valNames[card.value] || card.value;
+                        cardEl.innerHTML = `<div>${valStr}</div><div style="align-self:flex-end;">${card.suit}</div>`;
+                    }
+
+                    cardEl.style.top = `${rIdx * 24}px`;
+                    cardEl.onclick = (e) => {
+                        e.stopPropagation();
+                        handleCardClick(cIdx, rIdx);
+                    };
+
+                    colEl.appendChild(cardEl);
+                });
+            });
+
+            // 예비 덱 갱신
+            const stockEl = document.getElementById('stockDeck');
+            stockEl.innerText = stock.length > 0 ? `카드 배포 (${stock.length / 10})` : '비어있음';
+            stockEl.style.opacity = stock.length > 0 ? '1' : '0.5';
+
+            // 완성 영역
+            const completedEl = document.getElementById('completedSets');
+            completedEl.innerHTML = '';
+            for (let i = 0; i < completedCount; i++) {
+                const slot = document.createElement('div');
+                slot.className = 'completed-slot';
+                slot.innerText = '♠ K-A';
+                completedEl.appendChild(slot);
+            }
+        }
+
+        function handleCardClick(colIndex, cardIndex) {
+            const card = columns[colIndex][cardIndex];
+            if (!card.faceUp) return;
+
+            // 이미 선택된 상태라면 이동 시도
+            if (selected) {
+                if (selected.colIndex === colIndex) {
+                    selected = null; // 같은 열 클릭 시 해제
+                } else {
+                    moveCards(selected.colIndex, selected.cardIndex, colIndex);
+                }
+            } else {
+                // 새로운 카드 선택 (선택한 카드 아래로 연속 내림차순인지 확인)
+                if (isValidSequence(colIndex, cardIndex)) {
+                    selected = { colIndex, cardIndex };
+                }
+            }
+            updateUI();
+        }
+
+        function handleColumnClick(colIndex) {
+            if (selected) {
+                moveCards(selected.colIndex, selected.cardIndex, colIndex);
+                updateUI();
+            }
+        }
+
+        function isValidSequence(colIndex, cardIndex) {
+            const col = columns[colIndex];
+            for (let i = cardIndex; i < col.length - 1; i++) {
+                if (col[i].value !== col[i + 1].value + 1) {
+                    return false; // 연속된 내림차순이 아니면 묶어서 이동 불가능
+                }
+            }
+            return true;
+        }
+
+        function moveCards(fromCol, fromIdx, toCol) {
+            const targetCol = columns[toCol];
+            const movingCards = columns[fromCol].slice(fromIdx);
+
+            // 타겟 열이 비어있거나, 타겟의 맨 위 카드보다 이동할 카드의 시작값이 1 작아야 함
+            if (targetCol.length === 0 || targetCol[targetCol.length - 1].value === movingCards[0].value + 1) {
+                columns[fromCol].splice(fromIdx);
+                columns[toCol].push(...movingCards);
+
+                // 이전 열의 맨 위 카드 뒤집기
+                if (columns[fromCol].length > 0) {
+                    columns[fromCol][columns[fromCol].length - 1].faceUp = true;
+                }
+
+                moves++;
+                score = Math.max(0, score - 1);
+                selected = null;
+
+                checkCompletedSet(toCol);
+            } else {
+                selected = null; // 조건 불일치 시 해제
+            }
+        }
+
+        function drawStockCards() {
+            if (stock.length === 0) return;
+
+            // 모든 열에 최소 1장의 카드가 있어야 배포 가능
+            if (columns.some(col => col.length === 0)) {
+                alert('빈 열이 없어야 새 카드를 배포할 수 있습니다!');
+                return;
+            }
+
+            for (let i = 0; i < 10; i++) {
+                const card = stock.pop();
+                card.faceUp = true;
+                columns[i].push(card);
+                checkCompletedSet(i);
+            }
+
+            selected = null;
+            updateUI();
+        }
+
+        function checkCompletedSet(colIndex) {
+            const col = columns[colIndex];
+            if (col.length < 13) return;
+
+            // K(13)부터 A(1)까지 완성되어 있는지 확인
+            const last13 = col.slice(col.length - 13);
+            let isComplete = true;
+
+            for (let i = 0; i < 13; i++) {
+                if (!last13[i].faceUp || last13[i].value !== 13 - i) {
+                    isComplete = false;
+                    break;
+                }
+            }
+
+            if (isComplete) {
+                columns[colIndex].splice(col.length - 13);
+                if (columns[colIndex].length > 0) {
+                    columns[colIndex][columns[colIndex].length - 1].faceUp = true;
+                }
+                completedCount++;
+                score += 100;
+
+                if (completedCount === 8) {
+                    document.getElementById('winOverlay').style.display = 'flex';
+                }
+            }
+        }
+
+        initGame();
+    </script>
+</body>
+</html>
